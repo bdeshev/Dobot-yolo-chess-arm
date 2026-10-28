@@ -181,6 +181,7 @@ cython_debug/
 .cursorindexingignore
 
 # project-specific ignores
+local/
 runs
 *.exe
 *.pt

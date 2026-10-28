@@ -5,9 +5,15 @@ No real robot or DobotLab needed. Everything runs in this venv.
 
 Two robot models:
   ros    : authentic Dobot Magician URDF with real meshes and parallel-linkage
-           mimic joints, adapted from https://github.com/jkaniuka/magician_ros2
-           (MIT license). Default.
-  simple : fast low-poly Dobot-style arm, useful on slow machines
+           mimic joints + prismatic jaw gripper, adapted from
+           https://github.com/jkaniuka/magician_ros2 (MIT license). Default.
+  simple : fast low-poly Dobot-style arm with a wrist joint (tool points down)
+           and a prismatic jaw gripper
+
+Gripping: set_gripper() drives the jaws open/closed; grip_object() pins a body
+to the tool link with a fixed constraint (the physical equivalent of the jaws
+holding a piece). The legacy suction helpers (attach_object/release_object)
+remain for the original cup demo.
 
 Usage:
     python sim/dobot_vision_sim.py                     # GUI demo, authentic Magician
@@ -32,7 +38,8 @@ CAM_W, CAM_H = 960, 540
 CAM_HFOV_DEG = 55.0
 CAM_POS = [0.22, -0.40, 0.75]
 CAM_TARGET = [0.22, 0.12, 0.02]
-MAX_JOINT_STEP = 0.06
+MAX_JOINT_STEP = 0.006
+MAX_JOINT_VELOCITY = 0.4
 
 SCENE_CLASSES = {"cup"}
 
@@ -40,19 +47,19 @@ ROBOTS = {
     "simple": {
         "urdf": os.path.join(HERE, "urdf", "dobot_magician.urdf"),
         "rest_tcp": (0.22, 0.0, 0.30),
+        "drop": (0.30, -0.20),
+        "transit": [(0.17, 0.20)],
         "placements": [
             ([0.24, -0.06, 0.05], 2.0),
-            ([0.32, 0.16, 0.06], 2.2),
-            ([0.15, 0.28, 0.04], 1.8),
         ],
     },
     "ros": {
         "urdf": os.path.join(HERE, "urdf", "dobot_magician_ros.urdf"),
-        "rest_q": {1: 2.2, 2: -0.08, 3: 0.0, 4: 0.08, 5: 0.0},
+        "rest_q": {1: 0.55, 2: 1.2, 3: 1.0, 4: -1.2, 5: -1.0},
+        "drop": (0.15, -0.16),
+        "transit": [(0.10, 0.03), (0.17, 0.20)],
         "placements": [
             ([0.225, -0.045, 0.05], 1.3),
-            ([0.198, 0.136, 0.05], 1.3),
-            ([0.060, 0.212, 0.05], 1.3),
         ],
     },
 }
@@ -103,18 +110,25 @@ def build_scene(gui: bool, robot: str = "ros") -> dict:
         "cid": cid,
         "arm": arm,
         "robot": robot,
+        "drop": cfg["drop"],
+        "transit": cfg["transit"],
         "objects": objects,
         "exclude": {arm, table},
     }
-    if "rest_q" in cfg:
-        scene["rest_q"] = dict(cfg["rest_q"])
+    rest_q = cfg.get("rest_q")
+    if rest_q is not None:
+        rest_q = rest_q.copy()
     else:
-        scene["rest_q"] = solve_ik(scene, *cfg["rest_tcp"])
+        rest_q = solve_ik(scene, *cfg["rest_tcp"])
+    if rest_q is None:
+        raise ValueError(f"Could not solve IK for {robot!r} rest pose")
+    scene["rest_q"] = rest_q
+    scene["hold_q"] = rest_q.copy()
+    apply_joint_targets(scene, scene["rest_q"], teleport=True)
     for _ in range(150):
-        apply_joint_targets(scene, scene["rest_q"])
+        hold_step(scene)
         p.stepSimulation()
     return scene
-
 
 
 def camera_matrices():
@@ -144,25 +158,35 @@ def unproject(px, py, depth, view, proj):
     proj_m = np.reshape(proj, (4, 4)).T
     view_m = np.reshape(view, (4, 4)).T
     inv = np.linalg.inv(proj_m @ view_m)
-    ndc = np.array([2.0 * px / CAM_W - 1.0, 1.0 - 2.0 * py / CAM_H, 2.0 * depth - 1.0, 1.0])
+    ndc = np.array(
+        [2.0 * px / CAM_W - 1.0, 1.0 - 2.0 * py / CAM_H, 2.0 * depth - 1.0, 1.0]
+    )
     world = inv @ ndc
     return world[:3] / world[3]
 
 
-def pixel_to_target(px, py, view, proj, exclude):
-    """Raycast the camera pixel onto an object or the table plane."""
+def pixel_to_target(scene, px, py, view, proj):
+    """Raycast the camera pixel; aim at the hit object's top center or the table plane."""
     ray_from = unproject(px, py, 0.0, view, proj)
     ray_to = unproject(px, py, 1.0, view, proj)
     hits = p.rayTestBatch([ray_from], [ray_to])[0]
-    body_id, link, frac, pos, _ = hits
-    if body_id >= 0 and body_id not in exclude and frac < 1.0:
+    body_id, link, frac, _, _ = hits
+    if body_id >= 0 and body_id not in scene["exclude"] and frac < 1.0:
         aabb = p.getAABB(body_id, link)
+        obj = next((o for o in scene["objects"] if o["body"] == body_id), None)
+        center = (
+            p.getBasePositionAndOrientation(body_id)[0]
+            if obj
+            else [(aabb[0][i] + aabb[1][i]) / 2.0 for i in range(3)]
+        )
         top_z = aabb[1][2]
         return {
-            "x": float(pos[0]),
-            "y": float(pos[1]),
+            "x": float(center[0]),
+            "y": float(center[1]),
             "z_approach": top_z + 0.07,
+            "z_top": float(top_z),
             "z_pick": top_z + 0.015,
+            "body": body_id,
             "hit": "object",
         }
     direction = ray_to - ray_from
@@ -176,7 +200,9 @@ def pixel_to_target(px, py, view, proj, exclude):
         "x": float(point[0]),
         "y": float(point[1]),
         "z_approach": TABLE_Z + 0.12,
+        "z_top": TABLE_Z,
         "z_pick": TABLE_Z + 0.03,
+        "body": -1,
         "hit": "table",
     }
 
@@ -212,19 +238,28 @@ ROS_CORE_LINK = 6
 ROS_TCP_OFF = (-0.0128, 0.0212, -0.1078)
 ROS_JOINT_IDS = [1, 2, 3, 4, 5]
 ROS_MIMIC = {4: 2, 5: 3}
+TOOL_GRAB_LINK = {"simple": 3, "ros": ROS_CORE_LINK}
+TIP_IN_LINK = {"simple": (TOOL_TIP_OFFSET, 0, 0), "ros": ROS_TCP_OFF}
 
 
 def solve_ik(scene, x, y, z):
     """Closed-form IK; returns {joint_id: angle} for the active robot."""
     yaw = math.atan2(y, x)
     if scene["robot"] == "simple":
+        # The wrist keeps the tool vertical, so solve the 2-link chain for the
+        # wrist (joint4) at 0.04 m above the tip, with L2 shortened by that tip.
+        l2 = L2 - TOOL_TIP_OFFSET
         r = math.hypot(x, y)
-        z_rel = z - SHOULDER_Z
-        d = min(math.hypot(r, z_rel), L1 + L2 - 1e-4)
-        cos_e2 = (d * d - L1 * L1 - L2 * L2) / (2 * L1 * L2)
+        z_rel = (z + TOOL_TIP_OFFSET) - SHOULDER_Z
+        d = min(math.hypot(r, z_rel), L1 + l2 - 1e-4)
+        cos_e2 = (d * d - L1 * L1 - l2 * l2) / (2 * L1 * l2)
         e2 = -math.acos(max(-1.0, min(1.0, cos_e2)))
-        e1 = math.atan2(z_rel, r) - math.atan2(L2 * math.sin(e2), L1 + L2 * math.cos(e2))
-        return {0: yaw, 1: -e1, 2: -e2}
+        e1 = math.atan2(z_rel, r) - math.atan2(
+            l2 * math.sin(e2), L1 + l2 * math.cos(e2)
+        )
+        q = {0: yaw, 1: -e1, 2: -e2}
+        q[3] = math.pi / 2 - (q[1] + q[2])
+        return q
 
     ox, oy, oz = ROS_TCP_OFF
     tz = z - oz
@@ -251,8 +286,8 @@ def solve_ik(scene, x, y, z):
         if -0.087 - margin <= q2_cand <= 1.571 + margin:
             q2, q3 = q2_cand, cand
             break
-    if q2 is None:
-        q2, q3 = 0.3, 0.6
+    if q2 is None or q3 is None:
+        return None  # out of workspace: caller must not command a sweep
     q2 = max(-0.087, min(1.571, q2))
     q3 = max(-0.262, min(1.222, q3))
     return {1: yaw, 2: q2, 3: q3, 4: -q2, 5: -q3}
@@ -275,18 +310,26 @@ def tool_tip(scene):
 def apply_joint_targets(scene, targets, teleport=False):
     arm = scene["arm"]
     for jid, angle in targets.items():
+        if scene["robot"] == "ros" and jid in ROS_MIMIC:
+            continue  # owned by the mimic linkage, never motored directly
         if teleport:
             p.resetJointState(arm, jid, angle)
         else:
             p.setJointMotorControl2(
-                arm, jid, p.POSITION_CONTROL, targetPosition=angle, force=200, maxVelocity=3.0
+                arm,
+                jid,
+                p.POSITION_CONTROL,
+                targetPosition=angle,
+                force=200,
+                maxVelocity=MAX_JOINT_VELOCITY,
             )
     if scene["robot"] == "ros":
         sync_mimic_joints(scene)
 
 
 def sync_mimic_joints(scene):
-    """PyBullet ignores URDF <mimic> tags; enforce the parallel linkage manually."""
+    """PyBullet ignores URDF <mimic> tags; pin the linkage to its parents.
+    Driven kinematically because the mesh collision + gravity stall the motors."""
     arm = scene["arm"]
     for child, parent in ROS_MIMIC.items():
         p.resetJointState(arm, child, -p.getJointState(arm, parent)[0])
@@ -297,6 +340,8 @@ def step_towards(scene, targets, steps=8):
     for _ in range(steps):
         done = True
         for jid, goal in targets.items():
+            if scene["robot"] == "ros" and jid in ROS_MIMIC:
+                continue
             cur = p.getJointState(arm, jid)[0]
             delta = goal - cur
             if abs(delta) > MAX_JOINT_STEP:
@@ -307,9 +352,29 @@ def step_towards(scene, targets, steps=8):
         p.stepSimulation()
         if scene["robot"] == "ros":
             sync_mimic_joints(scene)
+        carry_step(scene)
         if done:
             return True
     return False
+
+
+def hold_step(scene):
+    """Keep the current pose while idle: hold parents, pin the mimic linkage."""
+    arm = scene["arm"]
+    for jid in scene["rest_q"]:
+        if scene["robot"] == "ros" and jid in ROS_MIMIC:
+            continue
+        cur = p.getJointState(arm, jid)[0]
+        p.setJointMotorControl2(
+            arm,
+            jid,
+            p.POSITION_CONTROL,
+            targetPosition=cur,
+            force=200,
+            maxVelocity=MAX_JOINT_VELOCITY,
+        )
+    if scene["robot"] == "ros":
+        sync_mimic_joints(scene)
 
 
 def draw_hud(img, detections, state, message):
@@ -319,7 +384,7 @@ def draw_hud(img, detections, state, message):
         cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
         cv2.putText(
             img,
-            f'{det["class_name"]} {det["confidence"]:.2f}',
+            f"{det['class_name']} {det['confidence']:.2f}",
             (x1, max(20, y1 - 6)),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.55,
@@ -352,44 +417,44 @@ def run(args):
 
 def run_headless(args, scene, model):
     rgb, _, _, view, proj = render_camera()
-    detections, bgr = detect(model, rgb)
+    detections, bgr = detect(model, rgb, conf=0.25)
     print(f"detections: {len(detections)}")
     scene_det = [d for d in detections if d["class_name"] in SCENE_CLASSES]
     if not scene_det:
         print("FAIL: no scene objects detected")
         return 1
 
-    ok = True
-    picks = []
-    for det in scene_det:
-        target = pixel_to_target(*det["center"], view, proj, scene["exclude"])
-        picks.append((det, target))
-        print(
-            f'  {det["class_name"]:12s} conf={det["confidence"]:.2f} '
-            f'center=({det["center"][0]:.0f},{det["center"][1]:.0f}) -> {target}'
-        )
-        cv2.imwrite(
-            os.path.join(HERE, f'frame_{det["class_name"].replace(" ", "_")}.png'),
-            draw_hud(bgr.copy(), [det], "headless", det["class_name"]),
-        )
+    det = max(scene_det, key=lambda d: d["confidence"])
+    cx, cy = det["center"]
+    target = pixel_to_target(scene, cx, cy, view, proj)
+    print(
+        f"  {det['class_name']:12s} conf={det['confidence']:.2f} "
+        f"center=({cx:.0f},{cy:.0f}) -> {target}"
+    )
+    cv2.imwrite(
+        os.path.join(HERE, f"frame_{det['class_name'].replace(' ', '_')}.png"),
+        draw_hud(bgr.copy(), [det], "headless", det["class_name"]),
+    )
+    if target is None:
+        print("FAIL: raycast failed")
+        return 1
 
-    for det, target in picks:
-        if target is None:
-            ok = False
-            print(f'  {det["class_name"]}: raycast failed')
-            continue
-        q = solve_ik(scene, target["x"], target["y"], target["z_pick"])
-        for _ in range(600):
-            if step_towards(scene, q, steps=1):
-                break
-        tip = tool_tip(scene)
-        err = math.dist(tip, [target["x"], target["y"], target["z_pick"]])
-        print(f'  {det["class_name"]}: reached within {err * 1000:.1f} mm')
-        ok = ok and err < 0.03
-        for _ in range(300):
-            if step_towards(scene, scene["rest_q"], steps=1):
-                break
+    drop = scene["drop"]
+    grabbed = go_pick(
+        scene, (target["x"], target["y"], target["z_top"]), (drop[0], drop[1])
+    )
+    for _ in range(300):
+        p.stepSimulation()
 
+    if not grabbed:
+        print("FAIL: suction missed the cup")
+        return 1
+    pos = p.getBasePositionAndOrientation(grabbed["body"])[0]
+    err = math.dist(pos[:2], drop)
+    print(
+        f"  placed '{grabbed['name']}' at ({pos[0]:.3f}, {pos[1]:.3f}), drop err {err * 1000:.1f} mm"
+    )
+    ok = err < 0.05
     print("PASS" if ok else "FAIL")
     return 0 if ok else 1
 
@@ -399,50 +464,199 @@ def live_frame(scene, model, conf=0.35):
     detections, bgr = detect(model, rgb, conf=conf)
     detections = [d for d in detections if d["class_name"] in SCENE_CLASSES]
     for det in detections:
-        det["target"] = pixel_to_target(*det["center"], view, proj, scene["exclude"])
+        det["target"] = pixel_to_target(scene, *det["center"], view, proj)
     return bgr, detections
 
 
-def nearest_object(scene, body_id):
+def move_to(scene, x, y, z, steps=2500):
+    q = solve_ik(scene, x, y, z)
+    if q is None:
+        return False
+    for _ in range(steps):
+        if step_towards(scene, q, steps=1):
+            return True
+    return False
+
+
+def move_to_safe(scene, x, y, z, steps=2500):
+    """Move to a target, lowering z until the IK stays in the workspace."""
+    for dz in (0.0, 0.01, 0.02, 0.03, 0.04, 0.05, 0.07, 0.09):
+        if (
+            move_to(scene, x, y, z - dz, steps)
+            and math.dist(tool_tip(scene), [x, y, z - dz]) < 0.015
+        ):
+            return True
+    return False
+
+
+def attach_object(scene, obj):
+    """Suction on: carry the mug upright under the tool tip like a vacuum cup."""
+    tip = np.array(tool_tip(scene))
+    mug_pos, _ = p.getBasePositionAndOrientation(obj["body"])
+    scene["carry"] = obj
+    scene["carry_off"] = np.array(mug_pos) - tip
+    scene["carry_mug_orn"] = p.getBasePositionAndOrientation(obj["body"])[1]
+
+
+def release_object(scene):
+    """Suction off: drop whatever is being carried."""
+    scene["carry"] = None
+
+
+GRIPPER_JOINTS = {"simple": (4, 5), "ros": (7, 8)}
+GRIPPER_OPEN = 0.0135  # half-stroke per jaw, meters
+
+
+def gripper_directions(scene):
+    """Sign of each jaw's opening stroke, read from the URDF limits.
+
+    The opening bound is whichever limit has the larger magnitude; its sign
+    says which way the jaw opens.
+    """
+    arm = scene["arm"]
+    dirs = {}
+    for jid in GRIPPER_JOINTS[scene["robot"]]:
+        lo, hi = p.getJointInfo(arm, jid)[8:10]
+        opening_bound = hi if abs(hi) > abs(lo) else lo
+        dirs[jid] = 1.0 if opening_bound >= 0 else -1.0
+    return dirs
+
+
+def set_gripper(scene, opening=GRIPPER_OPEN, force=20.0):
+    """Drive both jaws to their open position by `opening` meters (0 = closed)."""
+    arm = scene["arm"]
+    for jid, sign in gripper_directions(scene).items():
+        if scene["robot"] == "ros":
+            # The ROS jaw links have no inertia in the URDF; gravity makes the
+            # motors unstable, so pose them kinematically like the mimic joints.
+            p.resetJointState(arm, jid, sign * opening)
+        else:
+            p.setJointMotorControl2(
+                arm,
+                jid,
+                p.POSITION_CONTROL,
+                targetPosition=sign * opening,
+                force=force,
+                maxVelocity=0.5,
+            )
+
+
+def grip_object(scene, obj):
+    """Gripper grasp: pin the object to the tool link (like a closing jaw grip)."""
+    arm = scene["arm"]
+    link = TOOL_GRAB_LINK[scene["robot"]]
+    ls = p.getLinkState(arm, link, computeForwardKinematics=True)
+    link_pos, link_orn = ls[4], ls[5]
+    body_pos, body_orn = p.getBasePositionAndOrientation(obj["body"])
+    inv_pos, inv_orn = p.invertTransform(link_pos, link_orn)
+    local_pos, local_orn = p.multiplyTransforms(inv_pos, inv_orn, body_pos, body_orn)
+    constraint = p.createConstraint(
+        arm,
+        link,
+        obj["body"],
+        -1,
+        p.JOINT_FIXED,
+        [0, 0, 0],
+        parentFramePosition=local_pos,
+        parentFrameOrientation=local_orn,
+        childFramePosition=[0, 0, 0],
+        childFrameOrientation=[0, 0, 0],
+    )
+    tip = np.array(tool_tip(scene))
+    scene["carry_off"] = np.array(body_pos) - tip
+    scene["grasp"] = {"obj": obj, "constraint": constraint}
+    return constraint
+
+
+def release_grip(scene):
+    """Open the jaws: drop the constraint holding the object."""
+    grasp = scene.get("grasp")
+    if grasp:
+        p.removeConstraint(grasp["constraint"])
+        scene["grasp"] = None
+
+
+def filter_gripper_piece(scene, body):
+    """Disable jaw<->piece collisions; the grasp is constraint-based, so jaw
+    contact would only push pieces around while closing."""
+    arm = scene["arm"]
+    for jid in GRIPPER_JOINTS[scene["robot"]]:
+        p.setCollisionFilterPair(arm, body, jid, -1, 0)
+
+
+def carry_step(scene):
+    if not scene.get("carry"):
+        return
+    tip = np.array(tool_tip(scene))
+    target = tip + scene["carry_off"]
+    p.resetBasePositionAndOrientation(
+        scene["carry"]["body"], target, scene["carry_mug_orn"]
+    )
+    p.resetBaseVelocity(scene["carry"]["body"], [0, 0, 0], [0, 0, 0])
+
+
+def go_pick(scene, source, dest):
+    """Suction-style pick and place, modeled on DoBotArm2.py goPick(source, dest).
+
+    source is (x, y, z_top) where z_top is the top of the mug.
+    """
+    release_object(scene)  # suction off
+    grip_z = source[2] - 0.015  # tip height that presses onto the rim
+    yaw = math.atan2(source[1], source[0])
+    radius = math.hypot(source[0], source[1])
+
+    def at(rad, z):
+        return move_to_safe(scene, rad * math.cos(yaw), rad * math.sin(yaw), z)
+
+    transit = scene["transit"]
+    for rad, z in transit:
+        at(rad, z)
+    at(radius, source[2] + 0.04)  # move above source along its radial
+    move_to(scene, source[0], source[1], grip_z)  # descend onto rim
+    grabbed = None  # suction on
     for obj in scene["objects"]:
-        if obj["body"] == body_id:
-            return obj
-    return None
+        contact = p.getContactPoints(scene["arm"], obj["body"])
+        if not contact:
+            pts = p.getClosestPoints(scene["arm"], obj["body"], 0.03)
+            contact = bool(pts)
+        if contact:
+            grabbed = obj
+            attach_object(scene, obj)
+            break
+    if grabbed:
+        off = scene["carry_off"]
+        move_to_safe(scene, source[0], source[1], source[2] + 0.06)  # lift
+        move_to_safe(
+            scene, dest[0] - off[0], dest[1] - off[1], grip_z + 0.10
+        )  # above dest
+        move_to(scene, dest[0] - off[0], dest[1] - off[1], grip_z)  # descend to table
+    release_object(scene)  # suction off
+    for _ in range(120):
+        p.stepSimulation()
+    tip = tool_tip(scene)
+    move_to(scene, tip[0], tip[1], tip[2] + 0.08)  # retreat straight up (never lower)
+    at(*transit[-1])  # high transit pose, keeps off the table
+    for _ in range(800):
+        if step_towards(scene, scene["rest_q"], steps=1):
+            break
+    return grabbed
 
 
-def pick(scene, model, auto_move=True):
-    """One detect -> approach -> descend -> return cycle. Returns picked object or None."""
+def pick(scene, model):
+    """Detect a cup, then pick it and place it at the drop zone."""
     bgr, detections = live_frame(scene, model)
-    candidates = [d for d in detections if d["target"] and d["target"]["hit"] == "object"]
+    candidates = [
+        d for d in detections if d["target"] and d["target"]["hit"] == "object"
+    ]
     if not candidates:
         return None, bgr, detections
     pick_det = max(candidates, key=lambda d: d["confidence"])
     target = pick_det["target"]
-
-    q_approach = solve_ik(scene, target["x"], target["y"], target["z_approach"])
-    for _ in range(800):
-        if step_towards(scene, q_approach, steps=1):
-            break
-    q_pick = solve_ik(scene, target["x"], target["y"], target["z_pick"])
-    for _ in range(800):
-        if step_towards(scene, q_pick, steps=1):
-            break
-
-    grabbed = None
-    for obj in scene["objects"]:
-        if p.getContactPoints(scene["arm"], obj["body"]):
-            grabbed = obj
-            break
-
-    for _ in range(400):
-        if step_towards(scene, scene["rest_q"], steps=1):
-            break
-    if grabbed:
-        tip = tool_tip(scene)
-        p.resetBasePositionAndOrientation(grabbed["body"], [tip[0], tip[1], tip[2] + 0.01], [0, 0, 0, 1])
-        p.resetBaseVelocity(grabbed["body"], [0, 0, 0], [0, 0, 0])
-        for _ in range(120):
-            p.stepSimulation()
+    grabbed = go_pick(
+        scene,
+        (target["x"], target["y"], target["z_top"]),
+        (scene["drop"][0], scene["drop"][1]),
+    )
     return grabbed, bgr, detections
 
 
@@ -496,7 +710,7 @@ def run_gui(args, scene, model):
             cv2.rectangle(overlay, (x1, y1), (x2, y2), color, 2)
             cv2.putText(
                 overlay,
-                f'{det["class_name"]} {det["confidence"]:.2f}',
+                f"{det['class_name']} {det['confidence']:.2f}",
                 (x1, max(20, y1 - 6)),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.55,
@@ -506,6 +720,7 @@ def run_gui(args, scene, model):
         disp = draw_hud(overlay, [], state, message)
         cv2.imshow("Dobot YOLO view", disp)
         cv2.waitKey(1)
+        hold_step(scene)
         p.stepSimulation()
 
     cv2.destroyAllWindows()
@@ -514,6 +729,7 @@ def run_gui(args, scene, model):
 
 
 def reset_scene(scene):
+    release_object(scene)
     for obj in scene["objects"]:
         p.resetBasePositionAndOrientation(obj["body"], obj["spawn"], [0, 0, 0, 1])
         p.resetBaseVelocity(obj["body"], [0, 0, 0], [0, 0, 0])
@@ -524,10 +740,16 @@ def reset_scene(scene):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--headless", action="store_true", help="no windows, run sanity test")
+    parser.add_argument(
+        "--headless", action="store_true", help="no windows, run sanity test"
+    )
     parser.add_argument("--model", default="yolo26s.pt", help="YOLO weights")
-    parser.add_argument("--auto", action="store_true", help="auto pick cycle in GUI mode")
-    parser.add_argument("--robot", choices=sorted(ROBOTS), default="ros", help="robot model")
+    parser.add_argument(
+        "--auto", action="store_true", help="auto pick cycle in GUI mode"
+    )
+    parser.add_argument(
+        "--robot", choices=sorted(ROBOTS), default="ros", help="robot model"
+    )
     args = parser.parse_args()
     raise SystemExit(run(args))
 

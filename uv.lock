@@ -124,6 +124,12 @@ wheels = [
 ]
 
 [[package]]
+name = "chess"
+version = "1.11.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/93/09/7d04d7581ae3bb8b598017941781bceb7959dd1b13e3ebf7b6a2cd843bc9/chess-1.11.2.tar.gz", hash = "sha256:a8b43e5678fdb3000695bdaa573117ad683761e5ca38e591c4826eba6d25bb39", size = 6131385, upload-time = "2025-02-25T19:10:27.328Z" }
+
+[[package]]
 name = "cloudpickle"
 version = "3.1.2"
 source = { registry = "https://pypi.org/simple" }
@@ -923,6 +929,24 @@ wheels = [
 ]
 
 [[package]]
+name = "pybullet"
+version = "3.2.7"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/de/95/b9a98cd4ed948d4f25a7d0b13cb0c1f87e58dc6d113be9e18940641eb25f/pybullet-3.2.7.tar.gz", hash = "sha256:042879db8d101ac7590dee475fc6aded508b85fe1273fdbbfde1d88bd200e14f", size = 80508379, upload-time = "2025-01-30T00:34:00.527Z" }
+
+[[package]]
+name = "pydobotlab"
+version = "0.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyserial" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/76/9f/9c96b67201c377ffeee2a482785e1b600eb4341f5211badcf279234d0e48/pydobotlab-0.2.tar.gz", hash = "sha256:68ba13fba9a8c1d124632dbf01ef9e643b17207cbf0a2eb1d375cfd811ea9668", size = 149780, upload-time = "2026-10-12T20:31:15.518Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ea/58/bb14b9688c162f79ceb9d3bd9d76ecf024ffbe114d2a24c6a680cdc9281c/pydobotlab-0.2-py3-none-any.whl", hash = "sha256:950a2fb79c102ddd87e48508034e65bf2c74c85bf4c888246032c45b1943e117", size = 75029, upload-time = "2026-10-12T20:31:14.1Z" },
+]
+
+[[package]]
 name = "pygments"
 version = "2.21.0"
 source = { registry = "https://pypi.org/simple" }
@@ -938,6 +962,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/e4/11/b213bebff182584360cb8d17c72c1677fec5c5c228de439e63bcf8ab1c8f/pyparsing-3.3.3.tar.gz", hash = "sha256:928ae7e20211f3b6f3915a72f06a0cfd29ab9d24279dd6346b6b1a7146397d36", size = 1050487, upload-time = "2026-09-20T20:59:05.609Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/38/bb/d215ee7c73b61497b28a5503f9f53523f294fcc936762b7caf90e0c1c2b5/pyparsing-3.3.3-py3-none-any.whl", hash = "sha256:ece8c00a69cf01b45d0b1dedabb469c90d8caf996d4fda40f147627a122849a4", size = 126420, upload-time = "2026-09-20T20:59:04.025Z" },
+]
+
+[[package]]
+name = "pyserial"
+version = "3.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/1e/7d/ae3f0a63f41e4d2f6cb66a5b57197850f919f59e558159a4dd3a818f5082/pyserial-3.5.tar.gz", hash = "sha256:3c77e014170dfffbd816e6ffc205e9842efb10be9f58ec16d3e8675b4925cddb", size = 159125, upload-time = "2020-11-23T03:59:15.045Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/07/bc/587a445451b253b285629263eb51c2d8e9bcea4fc97826266d186f96f558/pyserial-3.5-py2.py3-none-any.whl", hash = "sha256:c4451db6ba391ca6ca299fb3ec7bae67a5c55dde170964c7a14ceefec02f2cf0", size = 90585, upload-time = "2020-11-23T03:59:13.41Z" },
 ]
 
 [[package]]
@@ -1050,6 +1083,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68a0e064b6af791aa332cf192da575fd474ed7d6f16a2/six-1.17.0.tar.gz", hash = "sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81", size = 34031, upload-time = "2024-12-04T17:35:28.174Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050, upload-time = "2024-12-04T17:35:26.475Z" },
+]
+
+[[package]]
+name = "stockfish"
+version = "5.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/99/52/685fc4d2c68157579e6b6ed3afba844e4bb467f45a1856c178e6b0e8bc73/stockfish-5.2.0.tar.gz", hash = "sha256:86db6882d34759575af15b7f201914ac8bad95b87672628f7754d8cf39e5a989", size = 33101, upload-time = "2026-04-17T05:51:44.562Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/23/bd/45d33e109d0e822c16c73747d9a8a7fa7bd29dcae435cd13275ddc3bbe98/stockfish-5.2.0-py3-none-any.whl", hash = "sha256:0f733810f6e049ba96f85a517f7122cad22b389b57e054cb9cb6780575cb2447", size = 25830, upload-time = "2026-04-17T05:51:43.138Z" },
 ]
 
 [[package]]
@@ -1200,6 +1242,10 @@ name = "xiao"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "chess" },
+    { name = "pybullet" },
+    { name = "pydobotlab" },
+    { name = "stockfish" },
     { name = "ultralytics" },
 ]
 
@@ -1210,7 +1256,13 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "ultralytics", specifier = ">=8.4.0" }]
+requires-dist = [
+    { name = "chess", specifier = ">=1.11.2" },
+    { name = "pybullet", specifier = ">=3.2.7" },
+    { name = "pydobotlab", specifier = ">=0.2" },
+    { name = "stockfish", specifier = ">=3.28.0" },
+    { name = "ultralytics", specifier = ">=8.4.0" },
+]
 
 [package.metadata.requires-dev]
 dev = [
