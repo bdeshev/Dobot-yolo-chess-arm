@@ -185,16 +185,4 @@ local/
 runs
 *.exe
 *.pt
-example
-sim/urdf/magician_meshes/dae/camera.dae
-sim/urdf/magician_meshes/dae/IntelRealSenseD435i.dae
-sim/urdf/magician_meshes/dae/stl/
-sim/urdf/magician_meshes/dae/*Gripper*
-sim/urdf/magician_meshes/dae/*pen*
-sim/urdf/magician_meshes/dae/suction_cup.dae
-sim/urdf/magician_meshes/dae/magicianSuctionCup.dae
-sim/urdf/magician_meshes/dae/magicianLink4_default.dae
-sim/urdf/magician_meshes/dae/jaw_left_extended.dae
-sim/urdf/magician_meshes/dae/jaw_right_extended.dae
-
 frame_*.png

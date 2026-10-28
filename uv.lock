@@ -136,7 +136,6 @@ source = { virtual = "." }
 dependencies = [
     { name = "chess" },
     { name = "pybullet" },
-    { name = "pydobotlab" },
     { name = "stockfish" },
     { name = "ultralytics" },
 ]
@@ -151,7 +150,6 @@ dev = [
 requires-dist = [
     { name = "chess", specifier = ">=1.11.2" },
     { name = "pybullet", specifier = ">=3.2.7" },
-    { name = "pydobotlab", specifier = ">=0.2" },
     { name = "stockfish", specifier = ">=3.28.0" },
     { name = "ultralytics", specifier = ">=8.4.0" },
 ]
@@ -968,18 +966,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/de/95/b9a98cd4ed948d4f25a7d0b13cb0c1f87e58dc6d113be9e18940641eb25f/pybullet-3.2.7.tar.gz", hash = "sha256:042879db8d101ac7590dee475fc6aded508b85fe1273fdbbfde1d88bd200e14f", size = 80508379, upload-time = "2025-01-30T00:34:00.527Z" }
 
 [[package]]
-name = "pydobotlab"
-version = "0.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pyserial" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/76/9f/9c96b67201c377ffeee2a482785e1b600eb4341f5211badcf279234d0e48/pydobotlab-0.2.tar.gz", hash = "sha256:68ba13fba9a8c1d124632dbf01ef9e643b17207cbf0a2eb1d375cfd811ea9668", size = 149780, upload-time = "2026-10-12T20:31:15.518Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ea/58/bb14b9688c162f79ceb9d3bd9d76ecf024ffbe114d2a24c6a680cdc9281c/pydobotlab-0.2-py3-none-any.whl", hash = "sha256:950a2fb79c102ddd87e48508034e65bf2c74c85bf4c888246032c45b1943e117", size = 75029, upload-time = "2026-10-12T20:31:14.1Z" },
-]
-
-[[package]]
 name = "pygments"
 version = "2.21.0"
 source = { registry = "https://pypi.org/simple" }
@@ -995,15 +981,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/e4/11/b213bebff182584360cb8d17c72c1677fec5c5c228de439e63bcf8ab1c8f/pyparsing-3.3.3.tar.gz", hash = "sha256:928ae7e20211f3b6f3915a72f06a0cfd29ab9d24279dd6346b6b1a7146397d36", size = 1050487, upload-time = "2026-09-20T20:59:05.609Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/38/bb/d215ee7c73b61497b28a5503f9f53523f294fcc936762b7caf90e0c1c2b5/pyparsing-3.3.3-py3-none-any.whl", hash = "sha256:ece8c00a69cf01b45d0b1dedabb469c90d8caf996d4fda40f147627a122849a4", size = 126420, upload-time = "2026-09-20T20:59:04.025Z" },
-]
-
-[[package]]
-name = "pyserial"
-version = "3.5"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/1e/7d/ae3f0a63f41e4d2f6cb66a5b57197850f919f59e558159a4dd3a818f5082/pyserial-3.5.tar.gz", hash = "sha256:3c77e014170dfffbd816e6ffc205e9842efb10be9f58ec16d3e8675b4925cddb", size = 159125, upload-time = "2020-11-23T03:59:15.045Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/07/bc/587a445451b253b285629263eb51c2d8e9bcea4fc97826266d186f96f558/pyserial-3.5-py2.py3-none-any.whl", hash = "sha256:c4451db6ba391ca6ca299fb3ec7bae67a5c55dde170964c7a14ceefec02f2cf0", size = 90585, upload-time = "2020-11-23T03:59:13.41Z" },
 ]
 
 [[package]]

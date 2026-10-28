@@ -1,7 +1,7 @@
 """Dobot Magician vision pick demo in PyBullet.
 
 Camera -> YOLO detection -> pixel unprojection/raycast -> IK arm motion.
-No real robot or DobotLab needed. Everything runs in this venv.
+No hardware needed. Everything runs in this venv.
 
 Two robot models:
   ros    : authentic Dobot Magician URDF with real meshes and parallel-linkage
